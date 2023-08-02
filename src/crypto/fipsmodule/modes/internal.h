@@ -285,7 +285,7 @@ size_t aesni_gcm_encrypt(const uint8_t *in, uint8_t *out, size_t len,
 size_t aesni_gcm_decrypt(const uint8_t *in, uint8_t *out, size_t len,
                          const AES_KEY *key, uint8_t ivec[16], uint64_t *Xi);
 
-                         void gcm_setiv_avx512(const AES_KEY *key, const GCM128_CONTEXT *ctx,
+void gcm_setiv_avx512(const AES_KEY *key, const GCM128_CONTEXT *ctx,
                       const uint8_t *iv, size_t ivlen);
 void aes_gcm_encrypt_avx512(const AES_KEY *key, const GCM128_CONTEXT *ctx,
                             unsigned *pblocklen, const uint8_t *in, size_t len,
