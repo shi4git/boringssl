@@ -451,13 +451,6 @@ int CRYPTO_gcm128_decrypt(GCM128_CONTEXT *ctx, const AES_KEY *key,
     ctx->ares = 0;
   }
 
-#if defined(AESNI_GCM)
-  if (ctx->gcm_key.use_aes_gcm_crypt_avx512 && len > 0) {
-    aes_gcm_encrypt_avx512(key, ctx, &ctx->mres, in, len, out);
-    return 1;
-  }
-#endif
-
   unsigned n = ctx->mres;
   if (n) {
     while (n && len) {
@@ -550,6 +543,13 @@ int CRYPTO_gcm128_encrypt_ctr32(GCM128_CONTEXT *ctx, const AES_KEY *key,
     GCM_MUL(ctx, Xi);
     ctx->ares = 0;
   }
+
+#if defined(AESNI_GCM)
+  if (ctx->gcm_key.use_aes_gcm_crypt_avx512 && len > 0) {
+    aes_gcm_encrypt_avx512(key, ctx, &ctx->mres, in, len, out);
+    return 1;
+  }
+#endif
 
   unsigned n = ctx->mres;
   if (n) {
