@@ -285,6 +285,7 @@ EC_GROUP *ec_group_new(const EC_METHOD *meth) {
 
   ret = OPENSSL_malloc(sizeof(EC_GROUP));
   if (ret == NULL) {
+    OPENSSL_PUT_ERROR(EC, ERR_R_MALLOC_FAILURE);
     return NULL;
   }
   OPENSSL_memset(ret, 0, sizeof(EC_GROUP));
@@ -446,6 +447,7 @@ static EC_GROUP *ec_group_new_from_data(const struct built_in_curve *curve) {
 
   BN_CTX *ctx = BN_CTX_new();
   if (ctx == NULL) {
+    OPENSSL_PUT_ERROR(EC, ERR_R_MALLOC_FAILURE);
     goto err;
   }
 
@@ -684,6 +686,7 @@ EC_POINT *EC_POINT_new(const EC_GROUP *group) {
 
   EC_POINT *ret = OPENSSL_malloc(sizeof *ret);
   if (ret == NULL) {
+    OPENSSL_PUT_ERROR(EC, ERR_R_MALLOC_FAILURE);
     return NULL;
   }
 
@@ -1152,8 +1155,8 @@ void ec_affine_select(const EC_GROUP *group, EC_AFFINE *out, BN_ULONG mask,
 
 void ec_precomp_select(const EC_GROUP *group, EC_PRECOMP *out, BN_ULONG mask,
                        const EC_PRECOMP *a, const EC_PRECOMP *b) {
-  static_assert(sizeof(out->comb) == sizeof(*out),
-                "out->comb does not span the entire structure");
+  OPENSSL_STATIC_ASSERT(sizeof(out->comb) == sizeof(*out),
+                        "out->comb does not span the entire structure");
   for (size_t i = 0; i < OPENSSL_ARRAY_SIZE(out->comb); i++) {
     ec_affine_select(group, &out->comb[i], mask, &a->comb[i], &b->comb[i]);
   }
@@ -1192,7 +1195,7 @@ int ec_get_x_coordinate_as_scalar(const EC_GROUP *group, EC_SCALAR *out,
   // Additionally, one can manually check this property for built-in curves. It
   // is enforced for legacy custom curves in |EC_GROUP_set_generator|.
   const BIGNUM *order = &group->order;
-  BN_ULONG words[EC_MAX_WORDS + 1] = {0};
+  BN_ULONG words[EC_MAX_WORDS + 1];
   bn_big_endian_to_words(words, order->width + 1, bytes, len);
   bn_reduce_once(out->words, words, /*carry=*/words[order->width], order->d,
                  order->width);

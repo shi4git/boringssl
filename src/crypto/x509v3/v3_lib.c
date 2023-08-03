@@ -1,3 +1,4 @@
+/* v3_lib.c */
 /*
  * Written by Dr Stephen N Henson (steve@openssl.org) for the OpenSSL project
  * 1999.
@@ -79,10 +80,12 @@ static int ext_stack_cmp(const X509V3_EXT_METHOD **a,
 
 int X509V3_EXT_add(X509V3_EXT_METHOD *ext) {
   if (!ext_list && !(ext_list = sk_X509V3_EXT_METHOD_new(ext_stack_cmp))) {
+    OPENSSL_PUT_ERROR(X509V3, ERR_R_MALLOC_FAILURE);
     ext_list_free(ext);
     return 0;
   }
   if (!sk_X509V3_EXT_METHOD_push(ext_list, ext)) {
+    OPENSSL_PUT_ERROR(X509V3, ERR_R_MALLOC_FAILURE);
     ext_list_free(ext);
     return 0;
   }
@@ -166,6 +169,7 @@ int X509V3_EXT_add_alias(int nid_to, int nid_from) {
   }
   if (!(tmpext =
             (X509V3_EXT_METHOD *)OPENSSL_malloc(sizeof(X509V3_EXT_METHOD)))) {
+    OPENSSL_PUT_ERROR(X509V3, ERR_R_MALLOC_FAILURE);
     return 0;
   }
   *tmpext = *ext;

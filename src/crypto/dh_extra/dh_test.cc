@@ -70,46 +70,136 @@
 #include <openssl/err.h>
 #include <openssl/mem.h>
 
-#include "../fipsmodule/dh/internal.h"
 #include "../internal.h"
 #include "../test/test_util.h"
 
 
-TEST(DHTest, Basic) {
+static bool RunBasicTests();
+static bool TestBadY();
+static bool TestASN1();
+static bool TestRFC3526();
+
+// TODO(davidben): Convert this file to GTest properly.
+TEST(DHTest, AllTests) {
+  if (!RunBasicTests() ||
+      !TestBadY() ||
+      !TestASN1() ||
+      !TestRFC3526()) {
+    ADD_FAILURE() << "Tests failed.";
+  }
+}
+
+static int GenerateCallback(int p, int n, BN_GENCB *arg) {
+  char c = '*';
+
+  if (p == 0) {
+    c = '.';
+  } else if (p == 1) {
+    c = '+';
+  } else if (p == 2) {
+    c = '*';
+  } else if (p == 3) {
+    c = '\n';
+  }
+  FILE *out = reinterpret_cast<FILE*>(arg->arg);
+  fputc(c, out);
+  fflush(out);
+
+  return 1;
+}
+
+static bool RunBasicTests() {
+  BN_GENCB cb;
+  BN_GENCB_set(&cb, &GenerateCallback, stdout);
   bssl::UniquePtr<DH> a(DH_new());
-  ASSERT_TRUE(a);
-  ASSERT_TRUE(DH_generate_parameters_ex(a.get(), 64, DH_GENERATOR_5, nullptr));
+  if (!a || !DH_generate_parameters_ex(a.get(), 64, DH_GENERATOR_5, &cb)) {
+    return false;
+  }
 
   int check_result;
-  ASSERT_TRUE(DH_check(a.get(), &check_result));
-  EXPECT_FALSE(check_result & DH_CHECK_P_NOT_PRIME);
-  EXPECT_FALSE(check_result & DH_CHECK_P_NOT_SAFE_PRIME);
-  EXPECT_FALSE(check_result & DH_CHECK_UNABLE_TO_CHECK_GENERATOR);
-  EXPECT_FALSE(check_result & DH_CHECK_NOT_SUITABLE_GENERATOR);
+  if (!DH_check(a.get(), &check_result)) {
+    return false;
+  }
+  if (check_result & DH_CHECK_P_NOT_PRIME) {
+    printf("p value is not prime\n");
+  }
+  if (check_result & DH_CHECK_P_NOT_SAFE_PRIME) {
+    printf("p value is not a safe prime\n");
+  }
+  if (check_result & DH_CHECK_UNABLE_TO_CHECK_GENERATOR) {
+    printf("unable to check the generator value\n");
+  }
+  if (check_result & DH_CHECK_NOT_SUITABLE_GENERATOR) {
+    printf("the g value is not a generator\n");
+  }
 
-  bssl::UniquePtr<DH> b(DHparams_dup(a.get()));
-  ASSERT_TRUE(b);
+  printf("\np    = ");
+  BN_print_fp(stdout, a->p);
+  printf("\ng    = ");
+  BN_print_fp(stdout, a->g);
+  printf("\n");
 
-  ASSERT_TRUE(DH_generate_key(a.get()));
-  ASSERT_TRUE(DH_generate_key(b.get()));
+  bssl::UniquePtr<DH> b(DH_new());
+  if (!b) {
+    return false;
+  }
+
+  b->p = BN_dup(a->p);
+  b->g = BN_dup(a->g);
+  if (b->p == nullptr || b->g == nullptr) {
+    return false;
+  }
+
+  if (!DH_generate_key(a.get())) {
+    return false;
+  }
+  printf("pri1 = ");
+  BN_print_fp(stdout, a->priv_key);
+  printf("\npub1 = ");
+  BN_print_fp(stdout, a->pub_key);
+  printf("\n");
+
+  if (!DH_generate_key(b.get())) {
+    return false;
+  }
+  printf("pri2 = ");
+  BN_print_fp(stdout, b->priv_key);
+  printf("\npub2 = ");
+  BN_print_fp(stdout, b->pub_key);
+  printf("\n");
 
   std::vector<uint8_t> key1(DH_size(a.get()));
-  int ret = DH_compute_key(key1.data(), DH_get0_pub_key(b.get()), a.get());
-  ASSERT_GE(ret, 0);
+  int ret = DH_compute_key(key1.data(), b->pub_key, a.get());
+  if (ret < 0) {
+    return false;
+  }
   key1.resize(ret);
 
+  printf("key1 = ");
+  for (size_t i = 0; i < key1.size(); i++) {
+    printf("%02x", key1[i]);
+  }
+  printf("\n");
+
   std::vector<uint8_t> key2(DH_size(b.get()));
-  ret = DH_compute_key(key2.data(), DH_get0_pub_key(a.get()), b.get());
-  ASSERT_GE(ret, 0);
+  ret = DH_compute_key(key2.data(), a->pub_key, b.get());
+  if (ret < 0) {
+    return false;
+  }
   key2.resize(ret);
 
-  EXPECT_EQ(Bytes(key1), Bytes(key2));
+  printf("key2 = ");
+  for (size_t i = 0; i < key2.size(); i++) {
+    printf("%02x", key2[i]);
+  }
+  printf("\n");
 
-  // |DH_compute_key|, unlike |DH_compute_key_padded|, removes leading zeros
-  // from the output, so the key will not have a fixed length. This test uses a
-  // small, 64-bit prime, so check for at least 32 bits of output after removing
-  // leading zeros.
-  EXPECT_GE(key1.size(), 4u);
+  if (key1.size() < 4 || key1 != key2) {
+    fprintf(stderr, "Error in DH routines\n");
+    return false;
+  }
+
+  return true;
 }
 
 // The following parameters are taken from RFC 5114, section 2.2. This is not a
@@ -195,30 +285,38 @@ static const uint8_t kRFC5114_2048_224BadY[] = {
     0x93, 0x74, 0x89, 0x59,
 };
 
-TEST(DHTest, BadY) {
+static bool TestBadY() {
   bssl::UniquePtr<DH> dh(DH_new());
-  ASSERT_TRUE(dh);
   dh->p = BN_bin2bn(kRFC5114_2048_224P, sizeof(kRFC5114_2048_224P), nullptr);
   dh->g = BN_bin2bn(kRFC5114_2048_224G, sizeof(kRFC5114_2048_224G), nullptr);
   dh->q = BN_bin2bn(kRFC5114_2048_224Q, sizeof(kRFC5114_2048_224Q), nullptr);
-  ASSERT_TRUE(dh->p);
-  ASSERT_TRUE(dh->g);
-  ASSERT_TRUE(dh->q);
+  if (!dh->p || !dh->g || !dh->q) {
+    return false;
+  }
 
   bssl::UniquePtr<BIGNUM> pub_key(
       BN_bin2bn(kRFC5114_2048_224BadY, sizeof(kRFC5114_2048_224BadY), nullptr));
-  ASSERT_TRUE(pub_key);
-  ASSERT_TRUE(DH_generate_key(dh.get()));
+  if (!dh || !pub_key || !DH_generate_key(dh.get())) {
+    return false;
+  }
 
   int flags;
-  ASSERT_TRUE(DH_check_pub_key(dh.get(), pub_key.get(), &flags));
-  EXPECT_TRUE(flags & DH_CHECK_PUBKEY_INVALID)
-      << "DH_check_pub_key did not reject the key";
+  if (!DH_check_pub_key(dh.get(), pub_key.get(), &flags)) {
+    return false;
+  }
+  if (!(flags & DH_CHECK_PUBKEY_INVALID)) {
+    fprintf(stderr, "DH_check_pub_key did not reject the key.\n");
+    return false;
+  }
 
   std::vector<uint8_t> result(DH_size(dh.get()));
-  EXPECT_LT(DH_compute_key(result.data(), pub_key.get(), dh.get()), 0)
-      << "DH_compute_key unexpectedly succeeded";
+  if (DH_compute_key(result.data(), pub_key.get(), dh.get()) >= 0) {
+    fprintf(stderr, "DH_compute_key unexpectedly succeeded.\n");
+    return false;
+  }
   ERR_clear_error();
+
+  return true;
 }
 
 static bool BIGNUMEqualsHex(const BIGNUM *bn, const char *hex) {
@@ -230,7 +328,7 @@ static bool BIGNUMEqualsHex(const BIGNUM *bn, const char *hex) {
   return BN_cmp(bn, hex_bn) == 0;
 }
 
-TEST(DHTest, ASN1) {
+static bool TestASN1() {
   // kParams are a set of Diffie-Hellman parameters generated with
   // openssl dhparam 256
   static const uint8_t kParams[] = {
@@ -243,22 +341,27 @@ TEST(DHTest, ASN1) {
   CBS cbs;
   CBS_init(&cbs, kParams, sizeof(kParams));
   bssl::UniquePtr<DH> dh(DH_parse_parameters(&cbs));
-  ASSERT_TRUE(dh);
-  EXPECT_EQ(CBS_len(&cbs), 0u);
-  EXPECT_TRUE(BIGNUMEqualsHex(
-      DH_get0_p(dh.get()),
-      "d72034a3274fdfbf04fd246825b656d8ab2a412d740a52087c40714ed2579313"));
-  EXPECT_TRUE(BIGNUMEqualsHex(DH_get0_g(dh.get()), "2"));
-  EXPECT_EQ(dh->priv_length, 0u);
+  if (!dh || CBS_len(&cbs) != 0 ||
+      !BIGNUMEqualsHex(
+          dh->p,
+          "d72034a3274fdfbf04fd246825b656d8ab2a412d740a52087c40714ed2579313") ||
+      !BIGNUMEqualsHex(dh->g, "2") || dh->priv_length != 0) {
+    return false;
+  }
 
   bssl::ScopedCBB cbb;
   uint8_t *der;
   size_t der_len;
-  ASSERT_TRUE(CBB_init(cbb.get(), 0));
-  ASSERT_TRUE(DH_marshal_parameters(cbb.get(), dh.get()));
-  ASSERT_TRUE(CBB_finish(cbb.get(), &der, &der_len));
+  if (!CBB_init(cbb.get(), 0) ||
+      !DH_marshal_parameters(cbb.get(), dh.get()) ||
+      !CBB_finish(cbb.get(), &der, &der_len)) {
+    return false;
+  }
   bssl::UniquePtr<uint8_t> free_der(der);
-  EXPECT_EQ(Bytes(kParams), Bytes(der, der_len));
+  if (der_len != sizeof(kParams) ||
+      OPENSSL_memcmp(der, kParams, der_len) != 0) {
+    return false;
+  }
 
   // kParamsDSA are a set of Diffie-Hellman parameters generated with
   // openssl dhparam 256 -dsaparam
@@ -279,30 +382,38 @@ TEST(DHTest, ASN1) {
 
   CBS_init(&cbs, kParamsDSA, sizeof(kParamsDSA));
   dh.reset(DH_parse_parameters(&cbs));
-  ASSERT_TRUE(dh);
-  EXPECT_EQ(CBS_len(&cbs), 0u);
-  EXPECT_TRUE(
-      BIGNUMEqualsHex(DH_get0_p(dh.get()),
-                      "93f3c11801e662b6d1469a2c72ea31d91810302863e2347d80caee8"
-                      "22b193c19bb42830270dddb8c03abe99cc4004d705f5203312ca467"
-                      "3451952aac11e26a55"));
-  EXPECT_TRUE(
-      BIGNUMEqualsHex(DH_get0_g(dh.get()),
-                      "44c8105344323163d8d18c75c898533b5b4a2a0a09e7d03c5372a86"
-                      "b70419c267144fc7f0875e102ab7441e82a3d3c263309e48bb441ec"
-                      "a6a8ba1a078a77f55f"));
-  EXPECT_EQ(dh->priv_length, 160u);
+  if (!dh || CBS_len(&cbs) != 0 ||
+      !BIGNUMEqualsHex(dh->p,
+                       "93f3c11801e662b6d1469a2c72ea31d91810302863e2347d80caee8"
+                       "22b193c19bb42830270dddb8c03abe99cc4004d705f5203312ca467"
+                       "3451952aac11e26a55") ||
+      !BIGNUMEqualsHex(dh->g,
+                       "44c8105344323163d8d18c75c898533b5b4a2a0a09e7d03c5372a86"
+                       "b70419c267144fc7f0875e102ab7441e82a3d3c263309e48bb441ec"
+                       "a6a8ba1a078a77f55f") ||
+      dh->priv_length != 160) {
+    return false;
+  }
 
-  ASSERT_TRUE(CBB_init(cbb.get(), 0));
-  ASSERT_TRUE(DH_marshal_parameters(cbb.get(), dh.get()));
-  ASSERT_TRUE(CBB_finish(cbb.get(), &der, &der_len));
+  if (!CBB_init(cbb.get(), 0) ||
+      !DH_marshal_parameters(cbb.get(), dh.get()) ||
+      !CBB_finish(cbb.get(), &der, &der_len)) {
+    return false;
+  }
   bssl::UniquePtr<uint8_t> free_der2(der);
-  EXPECT_EQ(Bytes(kParamsDSA), Bytes(der, der_len));
+  if (der_len != sizeof(kParamsDSA) ||
+      OPENSSL_memcmp(der, kParamsDSA, der_len) != 0) {
+    return false;
+  }
+
+  return true;
 }
 
-TEST(DHTest, RFC3526) {
+static bool TestRFC3526() {
   bssl::UniquePtr<BIGNUM> bn(BN_get_rfc3526_prime_1536(nullptr));
-  ASSERT_TRUE(bn);
+  if (!bn) {
+    return false;
+  }
 
   static const uint8_t kPrime1536[] = {
       0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0xc9, 0x0f, 0xda, 0xa2,
@@ -324,9 +435,14 @@ TEST(DHTest, RFC3526) {
   };
 
   uint8_t buffer[sizeof(kPrime1536)];
-  ASSERT_EQ(BN_num_bytes(bn.get()), sizeof(kPrime1536));
-  ASSERT_EQ(BN_bn2bin(bn.get(), buffer), sizeof(kPrime1536));
-  EXPECT_EQ(Bytes(buffer), Bytes(kPrime1536));
+  if (BN_num_bytes(bn.get()) != sizeof(kPrime1536) ||
+      BN_bn2bin(bn.get(), buffer) != sizeof(kPrime1536) ||
+      OPENSSL_memcmp(buffer, kPrime1536, sizeof(kPrime1536)) != 0) {
+    fprintf(stderr, "1536-bit MODP prime did not match.\n");
+    return false;
+  }
+
+  return true;
 }
 
 TEST(DHTest, LeadingZeros) {

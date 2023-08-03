@@ -80,11 +80,11 @@ DEFINE_STACK_OF(STACK_OF_X509_NAME_ENTRY)
 #define X509_NAME_MAX (1024 * 1024)
 
 static int x509_name_ex_d2i(ASN1_VALUE **val, const unsigned char **in,
-                            long len, const ASN1_ITEM *it, int opt,
-                            ASN1_TLC *ctx);
+                            long len, const ASN1_ITEM *it, int tag, int aclass,
+                            char opt, ASN1_TLC *ctx);
 
 static int x509_name_ex_i2d(ASN1_VALUE **val, unsigned char **out,
-                            const ASN1_ITEM *it);
+                            const ASN1_ITEM *it, int tag, int aclass);
 static int x509_name_ex_new(ASN1_VALUE **val, const ASN1_ITEM *it);
 static void x509_name_ex_free(ASN1_VALUE **val, const ASN1_ITEM *it);
 
@@ -120,11 +120,13 @@ ASN1_ITEM_TEMPLATE_END(X509_NAME_INTERNAL)
 // convert to the external form.
 
 static const ASN1_EXTERN_FUNCS x509_name_ff = {
+    NULL,
     x509_name_ex_new,
     x509_name_ex_free,
     0,  // Default clear behaviour is OK
     x509_name_ex_d2i,
     x509_name_ex_i2d,
+    NULL,
 };
 
 IMPLEMENT_EXTERN_ASN1(X509_NAME, V_ASN1_SEQUENCE, x509_name_ff)
@@ -152,6 +154,7 @@ static int x509_name_ex_new(ASN1_VALUE **val, const ASN1_ITEM *it) {
   return 1;
 
 memerr:
+  OPENSSL_PUT_ERROR(X509, ERR_R_MALLOC_FAILURE);
   if (ret) {
     if (ret->entries) {
       sk_X509_NAME_ENTRY_free(ret->entries);
@@ -186,8 +189,8 @@ static void local_sk_X509_NAME_ENTRY_pop_free(STACK_OF(X509_NAME_ENTRY) *ne) {
 }
 
 static int x509_name_ex_d2i(ASN1_VALUE **val, const unsigned char **in,
-                            long len, const ASN1_ITEM *it, int opt,
-                            ASN1_TLC *ctx) {
+                            long len, const ASN1_ITEM *it, int tag, int aclass,
+                            char opt, ASN1_TLC *ctx) {
   const unsigned char *p = *in, *q;
   STACK_OF(STACK_OF_X509_NAME_ENTRY) *intname = NULL;
   X509_NAME *nm = NULL;
@@ -204,8 +207,8 @@ static int x509_name_ex_d2i(ASN1_VALUE **val, const unsigned char **in,
   // Get internal representation of Name
   ASN1_VALUE *intname_val = NULL;
   ret = ASN1_item_ex_d2i(&intname_val, &p, len,
-                         ASN1_ITEM_rptr(X509_NAME_INTERNAL), /*tag=*/-1,
-                         /*aclass=*/0, opt, /*buf=*/NULL);
+                         ASN1_ITEM_rptr(X509_NAME_INTERNAL), tag, aclass, opt,
+                         ctx);
   if (ret <= 0) {
     return ret;
   }
@@ -255,7 +258,7 @@ err:
 }
 
 static int x509_name_ex_i2d(ASN1_VALUE **val, unsigned char **out,
-                            const ASN1_ITEM *it) {
+                            const ASN1_ITEM *it, int tag, int aclass) {
   X509_NAME *a = (X509_NAME *)*val;
   if (a->modified && (!x509_name_encode(a) || !x509_name_canon(a))) {
     return -1;
@@ -278,23 +281,23 @@ static int x509_name_encode(X509_NAME *a) {
   STACK_OF(STACK_OF_X509_NAME_ENTRY) *intname =
       sk_STACK_OF_X509_NAME_ENTRY_new_null();
   if (!intname) {
-    goto err;
+    goto memerr;
   }
   for (i = 0; i < sk_X509_NAME_ENTRY_num(a->entries); i++) {
     entry = sk_X509_NAME_ENTRY_value(a->entries, i);
     if (entry->set != set) {
       entries = sk_X509_NAME_ENTRY_new_null();
       if (!entries) {
-        goto err;
+        goto memerr;
       }
       if (!sk_STACK_OF_X509_NAME_ENTRY_push(intname, entries)) {
         sk_X509_NAME_ENTRY_free(entries);
-        goto err;
+        goto memerr;
       }
       set = entry->set;
     }
     if (!sk_X509_NAME_ENTRY_push(entries, entry)) {
-      goto err;
+      goto memerr;
     }
   }
   ASN1_VALUE *intname_val = (ASN1_VALUE *)intname;
@@ -304,7 +307,7 @@ static int x509_name_encode(X509_NAME *a) {
     goto err;
   }
   if (!BUF_MEM_grow(a->bytes, len)) {
-    goto err;
+    goto memerr;
   }
   p = (unsigned char *)a->bytes->data;
   if (ASN1_item_ex_i2d(&intname_val, &p, ASN1_ITEM_rptr(X509_NAME_INTERNAL),
@@ -314,6 +317,8 @@ static int x509_name_encode(X509_NAME *a) {
   sk_STACK_OF_X509_NAME_ENTRY_pop_free(intname, local_sk_X509_NAME_ENTRY_free);
   a->modified = 0;
   return 1;
+memerr:
+  OPENSSL_PUT_ERROR(X509, ERR_R_MALLOC_FAILURE);
 err:
   sk_STACK_OF_X509_NAME_ENTRY_pop_free(intname, local_sk_X509_NAME_ENTRY_free);
   return 0;
@@ -438,10 +443,12 @@ static int asn1_string_canon(ASN1_STRING *out, ASN1_STRING *in) {
 
   len = out->length;
 
-  // Convert string in place to canonical form.
+  // Convert string in place to canonical form. Ultimately we may need to
+  // handle a wider range of characters but for now ignore anything with
+  // MSB set and rely on the isspace() and tolower() functions.
 
   // Ignore leading spaces
-  while ((len > 0) && OPENSSL_isspace(*from)) {
+  while ((len > 0) && !(*from & 0x80) && isspace(*from)) {
     from++;
     len--;
   }
@@ -449,7 +456,7 @@ static int asn1_string_canon(ASN1_STRING *out, ASN1_STRING *in) {
   to = from + len;
 
   // Ignore trailing spaces
-  while ((len > 0) && OPENSSL_isspace(to[-1])) {
+  while ((len > 0) && !(to[-1] & 0x80) && isspace(to[-1])) {
     to--;
     len--;
   }
@@ -458,8 +465,13 @@ static int asn1_string_canon(ASN1_STRING *out, ASN1_STRING *in) {
 
   i = 0;
   while (i < len) {
+    // If MSB set just copy across
+    if (*from & 0x80) {
+      *to++ = *from++;
+      i++;
+    }
     // Collapse multiple spaces
-    if (OPENSSL_isspace(*from)) {
+    else if (isspace(*from)) {
       // Copy one space across
       *to++ = ' ';
       // Ignore subsequent spaces. Note: don't need to check len here
@@ -468,7 +480,7 @@ static int asn1_string_canon(ASN1_STRING *out, ASN1_STRING *in) {
       do {
         from++;
         i++;
-      } while (OPENSSL_isspace(*from));
+      } while (!(*from & 0x80) && isspace(*from));
     } else {
       *to++ = OPENSSL_tolower(*from);
       from++;

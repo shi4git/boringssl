@@ -66,10 +66,15 @@
 // Free up an ASN1 structure
 
 void ASN1_item_free(ASN1_VALUE *val, const ASN1_ITEM *it) {
-  ASN1_item_ex_free(&val, it);
+  asn1_item_combine_free(&val, it, 0);
 }
 
 void ASN1_item_ex_free(ASN1_VALUE **pval, const ASN1_ITEM *it) {
+  asn1_item_combine_free(pval, it, 0);
+}
+
+void asn1_item_combine_free(ASN1_VALUE **pval, const ASN1_ITEM *it,
+                            int combine) {
   const ASN1_TEMPLATE *tt = NULL, *seqtt;
   const ASN1_EXTERN_FUNCS *ef;
   int i;
@@ -112,8 +117,10 @@ void ASN1_item_ex_free(ASN1_VALUE **pval, const ASN1_ITEM *it) {
       if (asn1_cb) {
         asn1_cb(ASN1_OP_FREE_POST, pval, it, NULL);
       }
-      OPENSSL_free(*pval);
-      *pval = NULL;
+      if (!combine) {
+        OPENSSL_free(*pval);
+        *pval = NULL;
+      }
       break;
     }
 
@@ -153,8 +160,10 @@ void ASN1_item_ex_free(ASN1_VALUE **pval, const ASN1_ITEM *it) {
       if (asn1_cb) {
         asn1_cb(ASN1_OP_FREE_POST, pval, it, NULL);
       }
-      OPENSSL_free(*pval);
-      *pval = NULL;
+      if (!combine) {
+        OPENSSL_free(*pval);
+        *pval = NULL;
+      }
       break;
     }
   }
@@ -167,12 +176,13 @@ void ASN1_template_free(ASN1_VALUE **pval, const ASN1_TEMPLATE *tt) {
     for (i = 0; i < sk_ASN1_VALUE_num(sk); i++) {
       ASN1_VALUE *vtmp;
       vtmp = sk_ASN1_VALUE_value(sk, i);
-      ASN1_item_ex_free(&vtmp, ASN1_ITEM_ptr(tt->item));
+      asn1_item_combine_free(&vtmp, ASN1_ITEM_ptr(tt->item), 0);
     }
     sk_ASN1_VALUE_free(sk);
     *pval = NULL;
   } else {
-    ASN1_item_ex_free(pval, ASN1_ITEM_ptr(tt->item));
+    asn1_item_combine_free(pval, ASN1_ITEM_ptr(tt->item),
+                           tt->flags & ASN1_TFLG_COMBINE);
   }
 }
 
@@ -208,7 +218,7 @@ void ASN1_primitive_free(ASN1_VALUE **pval, const ASN1_ITEM *it) {
 
     case V_ASN1_BOOLEAN:
       if (it) {
-        *(ASN1_BOOLEAN *)pval = (ASN1_BOOLEAN)it->size;
+        *(ASN1_BOOLEAN *)pval = it->size;
       } else {
         *(ASN1_BOOLEAN *)pval = -1;
       }

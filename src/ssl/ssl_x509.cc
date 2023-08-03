@@ -284,6 +284,7 @@ static bool ssl_crypto_x509_session_cache_objects(SSL_SESSION *sess) {
   if (sk_CRYPTO_BUFFER_num(sess->certs.get()) > 0) {
     chain.reset(sk_X509_new_null());
     if (!chain) {
+      OPENSSL_PUT_ERROR(SSL, ERR_R_MALLOC_FAILURE);
       return false;
     }
     if (sess->is_server) {
@@ -291,6 +292,7 @@ static bool ssl_crypto_x509_session_cache_objects(SSL_SESSION *sess) {
       // |SSL_get_peer_cert_chain|.
       chain_without_leaf.reset(sk_X509_new_null());
       if (!chain_without_leaf) {
+        OPENSSL_PUT_ERROR(SSL, ERR_R_MALLOC_FAILURE);
         return false;
       }
     }
@@ -307,9 +309,11 @@ static bool ssl_crypto_x509_session_cache_objects(SSL_SESSION *sess) {
       leaf = UpRef(x509);
     } else if (chain_without_leaf &&
                !PushToStack(chain_without_leaf.get(), UpRef(x509))) {
+      OPENSSL_PUT_ERROR(SSL, ERR_R_MALLOC_FAILURE);
       return false;
     }
     if (!PushToStack(chain.get(), std::move(x509))) {
+      OPENSSL_PUT_ERROR(SSL, ERR_R_MALLOC_FAILURE);
       return false;
     }
   }
@@ -1037,11 +1041,7 @@ SSL_SESSION *d2i_SSL_SESSION(SSL_SESSION **a, const uint8_t **pp, long length) {
 }
 
 STACK_OF(X509_NAME) *SSL_dup_CA_list(STACK_OF(X509_NAME) *list) {
-  // TODO(https://crbug.com/boringssl/407): |X509_NAME_dup| should be const.
-  auto name_dup = [](const X509_NAME *name) {
-    return X509_NAME_dup(const_cast<X509_NAME *>(name));
-  };
-  return sk_X509_NAME_deep_copy(list, name_dup, X509_NAME_free);
+  return sk_X509_NAME_deep_copy(list, X509_NAME_dup, X509_NAME_free);
 }
 
 static void set_client_CA_list(UniquePtr<STACK_OF(CRYPTO_BUFFER)> *ca_list,
@@ -1100,6 +1100,7 @@ static STACK_OF(X509_NAME) *
 
   UniquePtr<STACK_OF(X509_NAME)> new_cache(sk_X509_NAME_new_null());
   if (!new_cache) {
+    OPENSSL_PUT_ERROR(SSL, ERR_R_MALLOC_FAILURE);
     return NULL;
   }
 

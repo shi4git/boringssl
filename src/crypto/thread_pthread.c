@@ -12,21 +12,22 @@
  * OF CONTRACT, NEGLIGENCE OR OTHER TORTIOUS ACTION, ARISING OUT OF OR IN
  * CONNECTION WITH THE USE OR PERFORMANCE OF THIS SOFTWARE. */
 
-// Ensure we can't call OPENSSL_malloc circularly.
-#define _BORINGSSL_PROHIBIT_OPENSSL_MALLOC
 #include "internal.h"
 
 #if defined(OPENSSL_PTHREADS)
 
-#include <assert.h>
 #include <pthread.h>
 #include <stdlib.h>
 #include <string.h>
 
-static_assert(sizeof(CRYPTO_MUTEX) >= sizeof(pthread_rwlock_t),
-              "CRYPTO_MUTEX is too small");
-static_assert(alignof(CRYPTO_MUTEX) >= alignof(pthread_rwlock_t),
-              "CRYPTO_MUTEX has insufficient alignment");
+#include <openssl/mem.h>
+#include <openssl/type_check.h>
+
+
+OPENSSL_STATIC_ASSERT(sizeof(CRYPTO_MUTEX) >= sizeof(pthread_rwlock_t),
+                      "CRYPTO_MUTEX is too small");
+OPENSSL_STATIC_ASSERT(alignof(CRYPTO_MUTEX) >= alignof(pthread_rwlock_t),
+                      "CRYPTO_MUTEX has insufficient alignment");
 
 void CRYPTO_MUTEX_init(CRYPTO_MUTEX *lock) {
   if (pthread_rwlock_init((pthread_rwlock_t *) lock, NULL) != 0) {
@@ -117,7 +118,7 @@ static void thread_local_destructor(void *arg) {
     }
   }
 
-  free(pointers);
+  OPENSSL_free(pointers);
 }
 
 static pthread_once_t g_thread_local_init_once = PTHREAD_ONCE_INIT;
@@ -152,14 +153,14 @@ int CRYPTO_set_thread_local(thread_local_data_t index, void *value,
 
   void **pointers = pthread_getspecific(g_thread_local_key);
   if (pointers == NULL) {
-    pointers = malloc(sizeof(void *) * NUM_OPENSSL_THREAD_LOCALS);
+    pointers = OPENSSL_malloc(sizeof(void *) * NUM_OPENSSL_THREAD_LOCALS);
     if (pointers == NULL) {
       destructor(value);
       return 0;
     }
     OPENSSL_memset(pointers, 0, sizeof(void *) * NUM_OPENSSL_THREAD_LOCALS);
     if (pthread_setspecific(g_thread_local_key, pointers) != 0) {
-      free(pointers);
+      OPENSSL_free(pointers);
       destructor(value);
       return 0;
     }

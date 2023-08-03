@@ -1,3 +1,4 @@
+/* crypto/x509/x509_lu.c */
 /* Copyright (C) 1995-1998 Eric Young (eay@cryptsoft.com)
  * All rights reserved.
  *
@@ -138,6 +139,30 @@ int X509_LOOKUP_by_subject(X509_LOOKUP *ctx, int type, X509_NAME *name,
     return 0;
   }
   return ctx->method->get_by_subject(ctx, type, name, ret) > 0;
+}
+
+int X509_LOOKUP_by_issuer_serial(X509_LOOKUP *ctx, int type, X509_NAME *name,
+                                 ASN1_INTEGER *serial, X509_OBJECT *ret) {
+  if ((ctx->method == NULL) || (ctx->method->get_by_issuer_serial == NULL)) {
+    return 0;
+  }
+  return ctx->method->get_by_issuer_serial(ctx, type, name, serial, ret) > 0;
+}
+
+int X509_LOOKUP_by_fingerprint(X509_LOOKUP *ctx, int type, unsigned char *bytes,
+                               int len, X509_OBJECT *ret) {
+  if ((ctx->method == NULL) || (ctx->method->get_by_fingerprint == NULL)) {
+    return 0;
+  }
+  return ctx->method->get_by_fingerprint(ctx, type, bytes, len, ret) > 0;
+}
+
+int X509_LOOKUP_by_alias(X509_LOOKUP *ctx, int type, char *str, int len,
+                         X509_OBJECT *ret) {
+  if ((ctx->method == NULL) || (ctx->method->get_by_alias == NULL)) {
+    return 0;
+  }
+  return ctx->method->get_by_alias(ctx, type, str, len, ret) > 0;
 }
 
 static int x509_object_cmp(const X509_OBJECT **a, const X509_OBJECT **b) {
@@ -320,6 +345,7 @@ static int x509_store_add(X509_STORE *ctx, void *x, int is_crl) {
 
   X509_OBJECT *const obj = (X509_OBJECT *)OPENSSL_malloc(sizeof(X509_OBJECT));
   if (obj == NULL) {
+    OPENSSL_PUT_ERROR(X509, ERR_R_MALLOC_FAILURE);
     return 0;
   }
 

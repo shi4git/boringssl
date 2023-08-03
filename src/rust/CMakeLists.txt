@@ -1,8 +1,11 @@
-# Additional interop for things like macros and inlined functions.
-add_library(rust_wrapper STATIC rust_wrapper.c)
-target_link_libraries(rust_wrapper crypto)
+# additional interop for things like macros and inlined functions
+add_library(
+  rust_wrapper
+  STATIC
+  rust_wrapper.c
+)
 
-# Generate architecture-specific wrappers.
+# generate architecture specific wrappers
 set(WRAPPER_TARGET ${CMAKE_BINARY_DIR}/rust/src/wrapper_${RUST_BINDINGS}.rs)
 set(COMMAND ${BINDGEN_EXECUTABLE} "wrapper.h"
             -o ${WRAPPER_TARGET}

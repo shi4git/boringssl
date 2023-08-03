@@ -58,55 +58,55 @@
 #include <openssl/bytestring.h>
 #include <openssl/err.h>
 #include <openssl/mem.h>
-#include <openssl/time.h>
 
 #include <string.h>
 #include <time.h>
 
 #include "internal.h"
 
-int asn1_utctime_to_tm(struct tm *tm, const ASN1_UTCTIME *d,
-                       int allow_timezone_offset) {
+int asn1_utctime_to_tm(struct tm *tm, const ASN1_UTCTIME *d) {
   if (d->type != V_ASN1_UTCTIME) {
     return 0;
   }
   CBS cbs;
   CBS_init(&cbs, d->data, (size_t)d->length);
-  if (!CBS_parse_utc_time(&cbs, tm, allow_timezone_offset)) {
+  if (!CBS_parse_utc_time(&cbs, tm, /*allow_timezone_offset=*/1)) {
     return 0;
   }
   return 1;
 }
 
 int ASN1_UTCTIME_check(const ASN1_UTCTIME *d) {
-  return asn1_utctime_to_tm(NULL, d, /*allow_timezone_offset=*/1);
+  return asn1_utctime_to_tm(NULL, d);
 }
 
 int ASN1_UTCTIME_set_string(ASN1_UTCTIME *s, const char *str) {
-  size_t len = strlen(str);
-  CBS cbs;
-  CBS_init(&cbs, (const uint8_t *)str, len);
-  if (!CBS_parse_utc_time(&cbs, /*out_tm=*/NULL,
-                          /*allow_timezone_offset=*/1)) {
+  ASN1_UTCTIME t;
+
+  t.type = V_ASN1_UTCTIME;
+  t.length = strlen(str);
+  t.data = (unsigned char *)str;
+  if (ASN1_UTCTIME_check(&t)) {
+    if (s != NULL) {
+      if (!ASN1_STRING_set((ASN1_STRING *)s, (unsigned char *)str, t.length)) {
+        return 0;
+      }
+      s->type = V_ASN1_UTCTIME;
+    }
+    return 1;
+  } else {
     return 0;
   }
-  if (s != NULL) {
-    if (!ASN1_STRING_set(s, str, len)) {
-      return 0;
-    }
-    s->type = V_ASN1_UTCTIME;
-  }
-  return 1;
 }
 
-ASN1_UTCTIME *ASN1_UTCTIME_set(ASN1_UTCTIME *s, int64_t posix_time) {
-  return ASN1_UTCTIME_adj(s, posix_time, 0, 0);
+ASN1_UTCTIME *ASN1_UTCTIME_set(ASN1_UTCTIME *s, time_t t) {
+  return ASN1_UTCTIME_adj(s, t, 0, 0);
 }
 
-ASN1_UTCTIME *ASN1_UTCTIME_adj(ASN1_UTCTIME *s, int64_t posix_time, int offset_day,
+ASN1_UTCTIME *ASN1_UTCTIME_adj(ASN1_UTCTIME *s, time_t t, int offset_day,
                                long offset_sec) {
   struct tm data;
-  if (!OPENSSL_posix_to_tm(posix_time, &data)) {
+  if (!OPENSSL_gmtime(&t, &data)) {
     return NULL;
   }
 
@@ -148,11 +148,11 @@ int ASN1_UTCTIME_cmp_time_t(const ASN1_UTCTIME *s, time_t t) {
   struct tm stm, ttm;
   int day, sec;
 
-  if (!asn1_utctime_to_tm(&stm, s, /*allow_timezone_offset=*/1)) {
+  if (!asn1_utctime_to_tm(&stm, s)) {
     return -2;
   }
 
-  if (!OPENSSL_posix_to_tm(t, &ttm)) {
+  if (!OPENSSL_gmtime(&t, &ttm)) {
     return -2;
   }
 

@@ -1,3 +1,4 @@
+/* v3_bcons.c */
 /*
  * Written by Dr Stephen N Henson (steve@openssl.org) for the OpenSSL project
  * 1999.
@@ -64,14 +65,11 @@
 #include <openssl/obj.h>
 #include <openssl/x509v3.h>
 
-#include "internal.h"
-
-
 static STACK_OF(CONF_VALUE) *i2v_BASIC_CONSTRAINTS(
     const X509V3_EXT_METHOD *method, void *ext, STACK_OF(CONF_VALUE) *extlist);
 static void *v2i_BASIC_CONSTRAINTS(const X509V3_EXT_METHOD *method,
-                                   const X509V3_CTX *ctx,
-                                   const STACK_OF(CONF_VALUE) *values);
+                                   X509V3_CTX *ctx,
+                                   STACK_OF(CONF_VALUE) *values);
 
 const X509V3_EXT_METHOD v3_bcons = {
     NID_basic_constraints,
@@ -106,14 +104,17 @@ static STACK_OF(CONF_VALUE) *i2v_BASIC_CONSTRAINTS(
 }
 
 static void *v2i_BASIC_CONSTRAINTS(const X509V3_EXT_METHOD *method,
-                                   const X509V3_CTX *ctx,
-                                   const STACK_OF(CONF_VALUE) *values) {
+                                   X509V3_CTX *ctx,
+                                   STACK_OF(CONF_VALUE) *values) {
   BASIC_CONSTRAINTS *bcons = NULL;
+  CONF_VALUE *val;
+  size_t i;
   if (!(bcons = BASIC_CONSTRAINTS_new())) {
+    OPENSSL_PUT_ERROR(X509V3, ERR_R_MALLOC_FAILURE);
     return NULL;
   }
-  for (size_t i = 0; i < sk_CONF_VALUE_num(values); i++) {
-    const CONF_VALUE *val = sk_CONF_VALUE_value(values, i);
+  for (i = 0; i < sk_CONF_VALUE_num(values); i++) {
+    val = sk_CONF_VALUE_value(values, i);
     if (!strcmp(val->name, "CA")) {
       if (!X509V3_get_value_bool(val, &bcons->ca)) {
         goto err;

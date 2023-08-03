@@ -1,3 +1,4 @@
+/* crypto/x509/by_dir.c */
 /* Copyright (C) 1995-1998 Eric Young (eay@cryptsoft.com)
  * All rights reserved.
  *
@@ -103,6 +104,9 @@ static X509_LOOKUP_METHOD x509_dir_lookup = {
     NULL,                 // shutdown
     dir_ctrl,             // ctrl
     get_cert_by_subject,  // get_by_subject
+    NULL,                 // get_by_issuer_serial
+    NULL,                 // get_by_fingerprint
+    NULL,                 // get_by_alias
 };
 
 X509_LOOKUP_METHOD *X509_LOOKUP_hash_dir(void) { return &x509_dir_lookup; }
@@ -211,6 +215,7 @@ static int add_cert_dir(BY_DIR *ctx, const char *dir, int type) {
       if (ctx->dirs == NULL) {
         ctx->dirs = sk_BY_DIR_ENTRY_new_null();
         if (!ctx->dirs) {
+          OPENSSL_PUT_ERROR(X509, ERR_R_MALLOC_FAILURE);
           return 0;
         }
       }
@@ -299,6 +304,7 @@ static int get_cert_by_subject(X509_LOOKUP *xl, int type, X509_NAME *name,
       ent = sk_BY_DIR_ENTRY_value(ctx->dirs, i);
       j = strlen(ent->dir) + 1 + 8 + 6 + 1 + 1;
       if (!BUF_MEM_grow(b, j)) {
+        OPENSSL_PUT_ERROR(X509, ERR_R_MALLOC_FAILURE);
         goto finish;
       }
       if (type == X509_LU_CRL && ent->hashes) {
@@ -317,8 +323,29 @@ static int get_cert_by_subject(X509_LOOKUP *xl, int type, X509_NAME *name,
         hent = NULL;
       }
       for (;;) {
-        BIO_snprintf(b->data, b->max, "%s/%08lx.%s%d", ent->dir, h, postfix,
-                     k);
+        char c = '/';
+#ifdef OPENSSL_SYS_VMS
+        c = ent->dir[strlen(ent->dir) - 1];
+        if (c != ':' && c != '>' && c != ']') {
+          // If no separator is present, we assume the directory
+          // specifier is a logical name, and add a colon.  We
+          // really should use better VMS routines for merging
+          // things like this, but this will do for now... --
+          // Richard Levitte
+          c = ':';
+        } else {
+          c = '\0';
+        }
+#endif
+        if (c == '\0') {
+          // This is special.  When c == '\0', no directory
+          // separator should be added.
+          BIO_snprintf(b->data, b->max, "%s%08lx.%s%d", ent->dir, h, postfix,
+                       k);
+        } else {
+          BIO_snprintf(b->data, b->max, "%s%c%08lx.%s%d", ent->dir, c, h,
+                       postfix, k);
+        }
 #ifndef OPENSSL_NO_POSIX_IO
 #if defined(_WIN32) && !defined(stat)
 #define stat _stat

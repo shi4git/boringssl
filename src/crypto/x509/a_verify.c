@@ -98,6 +98,7 @@ int ASN1_item_verify(const ASN1_ITEM *it, const X509_ALGOR *a,
   inl = ASN1_item_i2d(asn, &buf_in, it);
 
   if (buf_in == NULL) {
+    OPENSSL_PUT_ERROR(X509, ERR_R_MALLOC_FAILURE);
     goto err;
   }
 

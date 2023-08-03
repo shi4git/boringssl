@@ -37,11 +37,13 @@ typedef struct {
 static int pkey_hkdf_init(EVP_PKEY_CTX *ctx) {
   HKDF_PKEY_CTX *hctx = OPENSSL_malloc(sizeof(HKDF_PKEY_CTX));
   if (hctx == NULL) {
+    OPENSSL_PUT_ERROR(EVP, ERR_R_MALLOC_FAILURE);
     return 0;
   }
 
   OPENSSL_memset(hctx, 0, sizeof(HKDF_PKEY_CTX));
   if (!CBB_init(&hctx->info, 0)) {
+    OPENSSL_PUT_ERROR(EVP, ERR_R_MALLOC_FAILURE);
     OPENSSL_free(hctx);
     return 0;
   }
@@ -62,7 +64,8 @@ static int pkey_hkdf_copy(EVP_PKEY_CTX *dst, EVP_PKEY_CTX *src) {
 
   if (hctx_src->key_len != 0) {
     hctx_dst->key = OPENSSL_memdup(hctx_src->key, hctx_src->key_len);
-    if (hctx_dst->key == NULL) {
+    if (hctx_src->key == NULL) {
+      OPENSSL_PUT_ERROR(EVP, ERR_R_MALLOC_FAILURE);
       return 0;
     }
     hctx_dst->key_len = hctx_src->key_len;
@@ -70,7 +73,8 @@ static int pkey_hkdf_copy(EVP_PKEY_CTX *dst, EVP_PKEY_CTX *src) {
 
   if (hctx_src->salt_len != 0) {
     hctx_dst->salt = OPENSSL_memdup(hctx_src->salt, hctx_src->salt_len);
-    if (hctx_dst->salt == NULL) {
+    if (hctx_src->salt == NULL) {
+      OPENSSL_PUT_ERROR(EVP, ERR_R_MALLOC_FAILURE);
       return 0;
     }
     hctx_dst->salt_len = hctx_src->salt_len;
@@ -78,6 +82,7 @@ static int pkey_hkdf_copy(EVP_PKEY_CTX *dst, EVP_PKEY_CTX *src) {
 
   if (!CBB_add_bytes(&hctx_dst->info, CBB_data(&hctx_src->info),
                      CBB_len(&hctx_src->info))) {
+    OPENSSL_PUT_ERROR(EVP, ERR_R_MALLOC_FAILURE);
     return 0;
   }
 
@@ -154,6 +159,7 @@ static int pkey_hkdf_ctrl(EVP_PKEY_CTX *ctx, int type, int p1, void *p2) {
     case EVP_PKEY_CTRL_HKDF_KEY: {
       const CBS *key = p2;
       if (!CBS_stow(key, &hctx->key, &hctx->key_len)) {
+        OPENSSL_PUT_ERROR(EVP, ERR_R_MALLOC_FAILURE);
         return 0;
       }
       return 1;
@@ -161,6 +167,7 @@ static int pkey_hkdf_ctrl(EVP_PKEY_CTX *ctx, int type, int p1, void *p2) {
     case EVP_PKEY_CTRL_HKDF_SALT: {
       const CBS *salt = p2;
       if (!CBS_stow(salt, &hctx->salt, &hctx->salt_len)) {
+        OPENSSL_PUT_ERROR(EVP, ERR_R_MALLOC_FAILURE);
         return 0;
       }
       return 1;
@@ -170,6 +177,7 @@ static int pkey_hkdf_ctrl(EVP_PKEY_CTX *ctx, int type, int p1, void *p2) {
       // |EVP_PKEY_CTX_add1_hkdf_info| appends to the info string, rather than
       // replacing it.
       if (!CBB_add_bytes(&hctx->info, CBS_data(info), CBS_len(info))) {
+        OPENSSL_PUT_ERROR(EVP, ERR_R_MALLOC_FAILURE);
         return 0;
       }
       return 1;

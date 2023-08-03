@@ -1,3 +1,5 @@
+include_directories(../include)
+
 add_library(
   ssl
 
@@ -39,11 +41,15 @@ add_library(
   tls13_enc.cc
   tls13_server.cc
 )
-# Although libssl also provides headers that require an include directory, the
-# flag is already specified by libcrypto, so we omit target_include_directories
-# here.
-install_if_enabled(TARGETS ssl EXPORT OpenSSLTargets ${INSTALL_DESTINATION_DEFAULT})
+target_include_directories(ssl INTERFACE
+  $<BUILD_INTERFACE:${CMAKE_SOURCE_DIR}/include>
+  $<INSTALL_INTERFACE:include>
+)
+install(TARGETS ssl EXPORT OpenSSLTargets DESTINATION ${CMAKE_INSTALL_LIBDIR})
 set_property(TARGET ssl PROPERTY EXPORT_NAME SSL)
+
+add_dependencies(ssl global_target)
+
 target_link_libraries(ssl crypto)
 
 add_executable(
@@ -55,5 +61,11 @@ add_executable(
 
   $<TARGET_OBJECTS:boringssl_gtest_main>
 )
+
+add_dependencies(ssl_test global_target)
+
 target_link_libraries(ssl_test test_support_lib boringssl_gtest ssl crypto)
+if(WIN32)
+  target_link_libraries(ssl_test ws2_32)
+endif()
 add_dependencies(all_tests ssl_test)

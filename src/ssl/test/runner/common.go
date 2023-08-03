@@ -211,11 +211,6 @@ const (
 	// EdDSA algorithms
 	signatureEd25519 signatureAlgorithm = 0x0807
 	signatureEd448   signatureAlgorithm = 0x0808
-
-	// signatureRSAPKCS1WithMD5AndSHA1 is the internal value BoringSSL uses to
-	// represent the TLS 1.0/1.1 RSA MD5/SHA1 concatenation. We define the
-	// constant here to test that this doesn't leak into the protocol.
-	signatureRSAPKCS1WithMD5AndSHA1 signatureAlgorithm = 0xff01
 )
 
 // supportedSignatureAlgorithms contains the default supported signature
@@ -643,14 +638,6 @@ type ProtocolBugs struct {
 	// SkipHelloVerifyRequest causes a DTLS server to skip the
 	// HelloVerifyRequest message.
 	SkipHelloVerifyRequest bool
-
-	// HelloVerifyRequestCookieLength, if non-zero, is the length of the cookie
-	// to request in HelloVerifyRequest.
-	HelloVerifyRequestCookieLength int
-
-	// EmptyHelloVerifyRequestCookie, if true, causes a DTLS server to request
-	// an empty cookie in HelloVerifyRequest.
-	EmptyHelloVerifyRequestCookie bool
 
 	// SkipCertificateStatus, if true, causes the server to skip the
 	// CertificateStatus message. This is legal because CertificateStatus is
@@ -1797,15 +1784,10 @@ type ProtocolBugs struct {
 	// reject CertificateRequest with the CertificateAuthorities extension.
 	ExpectNoCertificateAuthoritiesExtension bool
 
-	// SigningAlgorithmForLegacyVersions, if non-zero, is the signature algorithm
+	// UseLegacySigningAlgorithm, if non-zero, is the signature algorithm
 	// to use when signing in TLS 1.1 and earlier where algorithms are not
 	// negotiated.
-	SigningAlgorithmForLegacyVersions signatureAlgorithm
-
-	// AlwaysSignAsLegacyVersion, if true, causes all TLS versions to sign as if
-	// they were TLS 1.1 and earlier. This can be paired with
-	// SendSignatureAlgorithm to send a given signature algorithm enum.
-	AlwaysSignAsLegacyVersion bool
+	UseLegacySigningAlgorithm signatureAlgorithm
 
 	// RejectUnsolicitedKeyUpdate, if true, causes all unsolicited
 	// KeyUpdates from the peer to be rejected.

@@ -936,10 +936,7 @@ OPENSSL_EXPORT int EVP_PKEY_CTX_set_ec_param_enc(EVP_PKEY_CTX *ctx,
 // EVP_PKEY_set1_tls_encodedpoint replaces |pkey| with a public key encoded by
 // |in|. It returns one on success and zero on error.
 //
-// If |pkey| is an EC key, the format is an X9.62 point and |pkey| must already
-// have an EC group configured. If it is an X25519 key, it is the 32-byte X25519
-// public key representation. This function is not supported for other key types
-// and will fail.
+// This function only works on X25519 keys.
 OPENSSL_EXPORT int EVP_PKEY_set1_tls_encodedpoint(EVP_PKEY *pkey,
                                                   const uint8_t *in,
                                                   size_t len);
@@ -949,10 +946,7 @@ OPENSSL_EXPORT int EVP_PKEY_set1_tls_encodedpoint(EVP_PKEY *pkey,
 // |OPENSSL_free| to release this buffer. The function returns the length of the
 // buffer on success and zero on error.
 //
-// If |pkey| is an EC key, the format is an X9.62 point with uncompressed
-// coordinates. If it is an X25519 key, it is the 32-byte X25519 public key
-// representation. This function is not supported for other key types and will
-// fail.
+// This function only works on X25519 keys.
 OPENSSL_EXPORT size_t EVP_PKEY_get1_tls_encodedpoint(const EVP_PKEY *pkey,
                                                      uint8_t **out_ptr);
 
@@ -1023,14 +1017,6 @@ OPENSSL_EXPORT int i2d_EC_PUBKEY(const EC_KEY *ec_key, uint8_t **outp);
 // Use |EVP_parse_public_key| instead.
 OPENSSL_EXPORT EC_KEY *d2i_EC_PUBKEY(EC_KEY **out, const uint8_t **inp,
                                      long len);
-
-// EVP_PKEY_CTX_set_dsa_paramgen_bits returns zero.
-OPENSSL_EXPORT int EVP_PKEY_CTX_set_dsa_paramgen_bits(EVP_PKEY_CTX *ctx,
-                                                      int nbits);
-
-// EVP_PKEY_CTX_set_dsa_paramgen_q_bits returns zero.
-OPENSSL_EXPORT int EVP_PKEY_CTX_set_dsa_paramgen_q_bits(EVP_PKEY_CTX *ctx,
-                                                        int qbits);
 
 
 // Preprocessor compatibility section (hidden).

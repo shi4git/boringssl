@@ -1,3 +1,4 @@
+/* v3_ncons.c */
 /*
  * Written by Dr Stephen N Henson (steve@openssl.org) for the OpenSSL
  * project.
@@ -69,8 +70,7 @@
 
 
 static void *v2i_NAME_CONSTRAINTS(const X509V3_EXT_METHOD *method,
-                                  const X509V3_CTX *ctx,
-                                  const STACK_OF(CONF_VALUE) *nval);
+                                  X509V3_CTX *ctx, STACK_OF(CONF_VALUE) *nval);
 static int i2r_NAME_CONSTRAINTS(const X509V3_EXT_METHOD *method, void *a,
                                 BIO *bp, int ind);
 static int do_i2r_name_constraints(const X509V3_EXT_METHOD *method,
@@ -120,18 +120,18 @@ IMPLEMENT_ASN1_ALLOC_FUNCTIONS(GENERAL_SUBTREE)
 IMPLEMENT_ASN1_ALLOC_FUNCTIONS(NAME_CONSTRAINTS)
 
 static void *v2i_NAME_CONSTRAINTS(const X509V3_EXT_METHOD *method,
-                                  const X509V3_CTX *ctx,
-                                  const STACK_OF(CONF_VALUE) *nval) {
+                                  X509V3_CTX *ctx, STACK_OF(CONF_VALUE) *nval) {
+  size_t i;
+  CONF_VALUE tval, *val;
   STACK_OF(GENERAL_SUBTREE) **ptree = NULL;
   NAME_CONSTRAINTS *ncons = NULL;
   GENERAL_SUBTREE *sub = NULL;
   ncons = NAME_CONSTRAINTS_new();
   if (!ncons) {
-    goto err;
+    goto memerr;
   }
-  for (size_t i = 0; i < sk_CONF_VALUE_num(nval); i++) {
-    const CONF_VALUE *val = sk_CONF_VALUE_value(nval, i);
-    CONF_VALUE tval;
+  for (i = 0; i < sk_CONF_VALUE_num(nval); i++) {
+    val = sk_CONF_VALUE_value(nval, i);
     if (!strncmp(val->name, "permitted", 9) && val->name[9]) {
       ptree = &ncons->permittedSubtrees;
       tval.name = val->name + 10;
@@ -151,13 +151,15 @@ static void *v2i_NAME_CONSTRAINTS(const X509V3_EXT_METHOD *method,
       *ptree = sk_GENERAL_SUBTREE_new_null();
     }
     if (!*ptree || !sk_GENERAL_SUBTREE_push(*ptree, sub)) {
-      goto err;
+      goto memerr;
     }
     sub = NULL;
   }
 
   return ncons;
 
+memerr:
+  OPENSSL_PUT_ERROR(X509V3, ERR_R_MALLOC_FAILURE);
 err:
   NAME_CONSTRAINTS_free(ncons);
   GENERAL_SUBTREE_free(sub);
@@ -476,7 +478,7 @@ static int nc_email(const ASN1_IA5STRING *eml, const ASN1_IA5STRING *base) {
   }
   int base_has_at = CBS_get_until_first(&base_cbs, &base_local, '@');
 
-  // Special case: initial '.' is RHS match
+  // Special case: inital '.' is RHS match
   if (!base_has_at && starts_with(&base_cbs, '.')) {
     if (has_suffix_case(&eml_cbs, &base_cbs)) {
       return X509_V_OK;
@@ -539,7 +541,7 @@ static int nc_uri(const ASN1_IA5STRING *uri, const ASN1_IA5STRING *base) {
     return X509_V_ERR_UNSUPPORTED_NAME_SYNTAX;
   }
 
-  // Special case: initial '.' is RHS match
+  // Special case: inital '.' is RHS match
   if (starts_with(&base_cbs, '.')) {
     if (has_suffix_case(&host, &base_cbs)) {
       return X509_V_OK;

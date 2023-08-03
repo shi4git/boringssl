@@ -738,13 +738,12 @@ static enum ssl_hs_wait_t do_send_server_hello(SSL_HANDSHAKE *hs) {
 
   SSL_HANDSHAKE_HINTS *const hints = hs->hints.get();
   if (hints && !hs->hints_requested &&
-      hints->server_random_tls13.size() == random.size()) {
-    OPENSSL_memcpy(random.data(), hints->server_random_tls13.data(),
-                   random.size());
+      hints->server_random.size() == random.size()) {
+    OPENSSL_memcpy(random.data(), hints->server_random.data(), random.size());
   } else {
     RAND_bytes(random.data(), random.size());
     if (hints && hs->hints_requested &&
-        !hints->server_random_tls13.CopyFrom(random)) {
+        !hints->server_random.CopyFrom(random)) {
       return ssl_hs_error;
     }
   }

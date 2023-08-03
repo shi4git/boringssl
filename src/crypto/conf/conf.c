@@ -132,6 +132,7 @@ CONF *NCONF_new(void *method) {
 CONF_VALUE *CONF_VALUE_new(void) {
   CONF_VALUE *v = OPENSSL_malloc(sizeof(CONF_VALUE));
   if (!v) {
+    OPENSSL_PUT_ERROR(CONF, ERR_R_MALLOC_FAILURE);
     return NULL;
   }
   OPENSSL_memset(v, 0, sizeof(CONF_VALUE));
@@ -339,6 +340,7 @@ static int str_copy(CONF *conf, char *section, char **pto, char *from) {
         goto err;
       }
       if (!BUF_MEM_grow_clean(buf, newsize)) {
+        OPENSSL_PUT_ERROR(CONF, ERR_R_MALLOC_FAILURE);
         goto err;
       }
       while (*p) {
@@ -383,9 +385,8 @@ static CONF_VALUE *get_section(const CONF *conf, const char *section) {
   return lh_CONF_VALUE_retrieve(conf->data, &template);
 }
 
-const STACK_OF(CONF_VALUE) *NCONF_get_section(const CONF *conf,
-                                              const char *section) {
-  const CONF_VALUE *section_value = get_section(conf, section);
+STACK_OF(CONF_VALUE) *NCONF_get_section(const CONF *conf, const char *section) {
+  CONF_VALUE *section_value = get_section(conf, section);
   if (section_value == NULL) {
     return NULL;
   }
@@ -550,6 +551,7 @@ static int def_load_bio(CONF *conf, BIO *in, long *out_error_line) {
 
   section = OPENSSL_strdup(kDefaultSectionName);
   if (section == NULL) {
+    OPENSSL_PUT_ERROR(CONF, ERR_R_MALLOC_FAILURE);
     goto err;
   }
 
@@ -684,6 +686,7 @@ static int def_load_bio(CONF *conf, BIO *in, long *out_error_line) {
       }
       v->name = OPENSSL_strdup(pname);
       if (v->name == NULL) {
+        OPENSSL_PUT_ERROR(CONF, ERR_R_MALLOC_FAILURE);
         goto err;
       }
       if (!str_copy(conf, psection, &(v->value), start)) {
@@ -702,6 +705,7 @@ static int def_load_bio(CONF *conf, BIO *in, long *out_error_line) {
         tv = sv;
       }
       if (add_string(conf, tv, v) == 0) {
+        OPENSSL_PUT_ERROR(CONF, ERR_R_MALLOC_FAILURE);
         goto err;
       }
       v = NULL;
@@ -762,7 +766,7 @@ int NCONF_load_bio(CONF *conf, BIO *bio, long *out_error_line) {
 }
 
 int CONF_parse_list(const char *list, char sep, int remove_whitespace,
-                    int (*list_cb)(const char *elem, size_t len, void *usr),
+                    int (*list_cb)(const char *elem, int len, void *usr),
                     void *arg) {
   int ret;
   const char *lstart, *tmpend, *p;
@@ -775,7 +779,7 @@ int CONF_parse_list(const char *list, char sep, int remove_whitespace,
   lstart = list;
   for (;;) {
     if (remove_whitespace) {
-      while (*lstart && OPENSSL_isspace((unsigned char)*lstart)) {
+      while (*lstart && isspace((unsigned char)*lstart)) {
         lstart++;
       }
     }
@@ -789,7 +793,7 @@ int CONF_parse_list(const char *list, char sep, int remove_whitespace,
         tmpend = lstart + strlen(lstart) - 1;
       }
       if (remove_whitespace) {
-        while (OPENSSL_isspace((unsigned char)*tmpend)) {
+        while (isspace((unsigned char)*tmpend)) {
           tmpend--;
         }
       }
