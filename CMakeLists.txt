@@ -269,6 +269,7 @@ set(
   linux-x86_64/crypto/chacha/chacha-x86_64.S
   linux-x86_64/crypto/cipher_extra/aes128gcmsiv-x86_64.S
   linux-x86_64/crypto/cipher_extra/chacha20_poly1305_x86_64.S
+  linux-x86_64/crypto/fipsmodule/aes-gcm-avx512.S
   linux-x86_64/crypto/fipsmodule/aesni-gcm-x86_64.S
   linux-x86_64/crypto/fipsmodule/aesni-x86_64.S
   linux-x86_64/crypto/fipsmodule/ghash-ssse3-x86_64.S
